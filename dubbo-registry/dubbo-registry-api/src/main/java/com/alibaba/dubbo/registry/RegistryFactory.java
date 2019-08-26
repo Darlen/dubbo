@@ -23,7 +23,12 @@ import com.alibaba.dubbo.common.extension.SPI;
 /**
  * RegistryFactory. (SPI, Singleton, ThreadSafe)
  *
+ * 该接口是一个可扩展接口，可以看到该接口上有个@SPI注解，并且默认值为dubbo，也就是默认扩展的是DubboRegistryFactory，
+ * 并且可以在getRegistry方法上可以看到有@Adaptive注解，那么该接口会动态生成一个适配器RegistryFactory$Adaptive，
+ * 并且会去首先扩展url.protocol的值对应的实现类。关于SPI扩展机制请观看
+ * 《dubbo源码解析（二）Dubbo扩展机制SPI》：https://segmentfault.com/a/1190000016842868
  * @see com.alibaba.dubbo.registry.support.AbstractRegistryFactory
+ *
  */
 @SPI("dubbo")
 public interface RegistryFactory {
@@ -41,6 +46,20 @@ public interface RegistryFactory {
      *
      * @param url Registry address, is not allowed to be empty
      * @return Registry reference, never return empty value
+     */
+    /**
+     * 连接注册中心.
+     *
+     * 连接注册中心需处理契约：<br>
+     * 1. 当设置check=false时表示不检查连接，否则在连接不上时抛出异常。<br>
+     * 2. 支持URL上的username:password权限认证。<br>
+     * 3. 支持backup=10.20.153.10备选注册中心集群地址。<br>
+     * 4. 支持file=registry.cache本地磁盘文件缓存。<br>
+     * 5. 支持timeout=1000请求超时设置。<br>
+     * 6. 支持session=60000会话超时或过期设置。<br>
+     *
+     * @param url 注册中心地址，不允许为空
+     * @return 注册中心引用，总不返回空
      */
     @Adaptive({"protocol"})
     Registry getRegistry(URL url);

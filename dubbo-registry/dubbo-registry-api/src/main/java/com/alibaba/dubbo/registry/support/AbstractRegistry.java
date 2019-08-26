@@ -101,8 +101,10 @@ public abstract class AbstractRegistry implements Registry {
     private final ConcurrentMap<URL, Set<NotifyListener>> subscribed = new ConcurrentHashMap<URL, Set<NotifyListener>>();
     /**
      * 某个消费者 被通知的 服务URL 集合，并且该服务URL有分类
-     * 第一个key是消费者的URL，对应的就是哪个消费者。
-     * value是一个map集合，该map集合的key是分类的意思，例如providers、routes等，value就是被通知的服务URL集合
+     *      第一个key是消费者的URL，对应的就是哪个消费者。
+     *      value是一个map集合
+     *          key是分类（catagory）的意思，例如providers、routes等，
+     *          value就是被通知的服务URL集合
      */
     private final ConcurrentMap<URL, Map<String, List<URL>>> notified = new ConcurrentHashMap<URL, Map<String, List<URL>>>();
     /**
@@ -133,6 +135,7 @@ public abstract class AbstractRegistry implements Registry {
         //从url中读取是否同步保存文件的配置，如果没有值默认用异步保存文件
         syncSaveFile = url.getParameter(Constants.REGISTRY_FILESAVE_SYNC_KEY, false);
         //获得file路径
+        //保存的文件路径都优先选择URL上的配置，如果没有相关的配置，再选用默认配置
         String filename = url.getParameter(Constants.FILE_KEY, System.getProperty("user.home") + "/.dubbo/dubbo-registry-" + url.getParameter(Constants.APPLICATION_KEY) + "-" + url.getAddress() + ".cache");
         File file = null;
         if (ConfigUtils.isNotEmpty(filename)) {
@@ -151,6 +154,13 @@ public abstract class AbstractRegistry implements Registry {
         notify(url.getBackupUrls());
     }
 
+    /**
+     * 判断url集合是否为空，如果为空，则把url中key为empty的值加入到集合。
+     * 该方法只有在notify方法中用到，为了防止通知的URL变化结果为空。
+     * @param url
+     * @param urls
+     * @return
+     */
     protected static List<URL> filterEmpty(URL url, List<URL> urls) {
         if (urls == null || urls.isEmpty()) {
             List<URL> result = new ArrayList<URL>(1);
@@ -455,7 +465,13 @@ public abstract class AbstractRegistry implements Registry {
     }
     /**
      * 遍历监听器，通知监听器,URL 变化
-     * zookeeper://127.0.0.1:2181/com.alibaba.dubbo.registry.RegistryService?application=dubbo-provider-demo&dubbo=2.0.2&file=dubbo-demo/logs/dubbo/cache/dubbo-provider-demo&interface=com.alibaba.dubbo.registry.RegistryService&pid=87978&timestamp=1566731374002
+     * zookeeper://127.0.0.1:2181/com.alibaba.dubbo.registry.RegistryService
+     *      ?application=dubbo-provider-demo
+     *      &dubbo=2.0.2
+     *      &file=dubbo-demo/logs/dubbo/cache/dubbo-provider-demo
+     *      &interface=com.alibaba.dubbo.registry.RegistryService
+     *      &pid=87978
+     *      &timestamp=1566731374002
      * @param urls
      */
     protected void notify(List<URL> urls) {

@@ -43,29 +43,55 @@ import java.util.concurrent.TimeUnit;
 public abstract class FailbackRegistry extends AbstractRegistry {
 
     // Scheduled executor service
+    /**
+     * // 定时任务执行器
+     */
     private final ScheduledExecutorService retryExecutor = Executors.newScheduledThreadPool(1, new NamedThreadFactory("DubboRegistryFailedRetryTimer", true));
 
     // Timer for failure retry, regular check if there is a request for failure, and if there is, an unlimited retry
+    /**
+     * 失败重试定时器，定时去检查是否有请求失败的，如有，无限次重试。
+     */
     private final ScheduledFuture<?> retryFuture;
 
+    /**
+     * 注册失败的URL集合
+     */
     private final Set<URL> failedRegistered = new ConcurrentHashSet<URL>();
 
+    /**
+     * 取消注册失败的URL集合
+     */
     private final Set<URL> failedUnregistered = new ConcurrentHashSet<URL>();
 
+    /**
+     * 订阅失败的监听器集合
+     */
     private final ConcurrentMap<URL, Set<NotifyListener>> failedSubscribed = new ConcurrentHashMap<URL, Set<NotifyListener>>();
 
+    /**
+     * 取消订阅失败的监听器集合
+     */
     private final ConcurrentMap<URL, Set<NotifyListener>> failedUnsubscribed = new ConcurrentHashMap<URL, Set<NotifyListener>>();
 
+    /**
+     * 通知失败的URL集合
+     */
     private final ConcurrentMap<URL, Map<NotifyListener, List<URL>>> failedNotified = new ConcurrentHashMap<URL, Map<NotifyListener, List<URL>>>();
 
     /**
      * The time in milliseconds the retryExecutor will wait
      */
+    /**
+     * 重试频率
+     */
     private final int retryPeriod;
 
     public FailbackRegistry(URL url) {
         super(url);
+        //从url中读取重试频率，如果为空，则默认5000ms
         this.retryPeriod = url.getParameter(Constants.REGISTRY_RETRY_PERIOD_KEY, Constants.DEFAULT_REGISTRY_RETRY_PERIOD);
+        // 创建失败重试定时器
         this.retryFuture = retryExecutor.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
@@ -130,15 +156,18 @@ public abstract class FailbackRegistry extends AbstractRegistry {
     @Override
     public void register(URL url) {
         super.register(url);
+        //首先从失败的缓存中删除该url
         failedRegistered.remove(url);
         failedUnregistered.remove(url);
         try {
             // Sending a registration request to the server side
+            // 向注册中心发送一个注册请求
             doRegister(url);
         } catch (Exception e) {
             Throwable t = e;
 
             // If the startup detection is opened, the Exception is thrown directly.
+            // 如果开启了启动时检测，则直接抛出异常
             boolean check = getUrl().getParameter(Constants.CHECK_KEY, true)
                     && url.getParameter(Constants.CHECK_KEY, true)
                     && !Constants.CONSUMER_PROTOCOL.equals(url.getProtocol());
@@ -153,6 +182,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             }
 
             // Record a failed registration request to a failed list, retry regularly
+            // 把这个注册失败的url放入缓存，并且定时重试。
             failedRegistered.add(url);
         }
     }
@@ -160,10 +190,12 @@ public abstract class FailbackRegistry extends AbstractRegistry {
     @Override
     public void unregister(URL url) {
         super.unregister(url);
+        // 失败的缓存中删除该url
         failedRegistered.remove(url);
         failedUnregistered.remove(url);
         try {
             // Sending a cancellation request to the server side
+            // 向注册中心发送取消注册的请求
             doUnregister(url);
         } catch (Exception e) {
             Throwable t = e;
@@ -183,6 +215,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             }
 
             // Record a failed registration request to a failed list, retry regularly
+            // 加入到注册取消失败的缓存中
             failedUnregistered.add(url);
         }
     }
@@ -190,9 +223,11 @@ public abstract class FailbackRegistry extends AbstractRegistry {
     @Override
     public void subscribe(URL url, NotifyListener listener) {
         super.subscribe(url, listener);
+        // 从failedSubscribed 、failedUnsubscribed 、failedNotified删除该监听器
         removeFailedSubscribed(url, listener);
         try {
             // Sending a subscription request to the server side
+            // 向注册中心发送一个订阅的请求
             doSubscribe(url, listener);
         } catch (Exception e) {
             Throwable t = e;
@@ -217,6 +252,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             }
 
             // Record a failed registration request to a failed list, retry regularly
+            // 加入到failedSubscribed中
             addFailedSubscribed(url, listener);
         }
     }
@@ -224,9 +260,11 @@ public abstract class FailbackRegistry extends AbstractRegistry {
     @Override
     public void unsubscribe(URL url, NotifyListener listener) {
         super.unsubscribe(url, listener);
+        // 从failedSubscribed 、failedUnsubscribed 、failedNotified删除该监听器
         removeFailedSubscribed(url, listener);
         try {
             // Sending a canceling subscription request to the server side
+            // 向注册中心发送一个取消订阅的请求
             doUnsubscribe(url, listener);
         } catch (Exception e) {
             Throwable t = e;
@@ -263,9 +301,11 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             throw new IllegalArgumentException("notify listener == null");
         }
         try {
+            // 通知 url 数据变化
             doNotify(url, listener, urls);
         } catch (Exception t) {
             // Record a failed registration request to a failed list, retry regularly
+            // 放入失败的缓存中，重试
             Map<NotifyListener, List<URL>> listeners = failedNotified.get(url);
             if (listeners == null) {
                 failedNotified.putIfAbsent(url, new ConcurrentHashMap<NotifyListener, List<URL>>());
@@ -283,6 +323,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
     @Override
     protected void recover() throws Exception {
         // register
+        // register 恢复注册，添加到 `failedRegistered` ，定时重试
         Set<URL> recoverRegistered = new HashSet<URL>(getRegistered());
         if (!recoverRegistered.isEmpty()) {
             if (logger.isInfoEnabled()) {
@@ -293,6 +334,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             }
         }
         // subscribe
+        // subscribe 恢复订阅，添加到 `failedSubscribed` ，定时重试
         Map<URL, Set<NotifyListener>> recoverSubscribed = new HashMap<URL, Set<NotifyListener>>(getSubscribed());
         if (!recoverSubscribed.isEmpty()) {
             if (logger.isInfoEnabled()) {
@@ -309,7 +351,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
 
     // Retry the failed actions
     protected void retry() {
+        // 重试执行注册
         if (!failedRegistered.isEmpty()) {
+            // 避免并发冲突
             Set<URL> failed = new HashSet<URL>(failedRegistered);
             if (failed.size() > 0) {
                 if (logger.isInfoEnabled()) {
@@ -318,7 +362,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 try {
                     for (URL url : failed) {
                         try {
+                            // 注册
                             doRegister(url);
+                            // 从注册失败的缓存中移除
                             failedRegistered.remove(url);
                         } catch (Throwable t) { // Ignore all the exceptions and wait for the next retry
                             logger.warn("Failed to retry register " + failed + ", waiting for again, cause: " + t.getMessage(), t);
@@ -329,7 +375,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 }
             }
         }
+        // 重试取消注册
         if (!failedUnregistered.isEmpty()) {
+            // 避免并发冲突
             Set<URL> failed = new HashSet<URL>(failedUnregistered);
             if (!failed.isEmpty()) {
                 if (logger.isInfoEnabled()) {
@@ -338,7 +386,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 try {
                     for (URL url : failed) {
                         try {
+                            // 取消注册
                             doUnregister(url);
+                            // 从缓存中移除
                             failedUnregistered.remove(url);
                         } catch (Throwable t) { // Ignore all the exceptions and wait for the next retry
                             logger.warn("Failed to retry unregister  " + failed + ", waiting for again, cause: " + t.getMessage(), t);
@@ -349,7 +399,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 }
             }
         }
+        // 重试失败订阅
         if (!failedSubscribed.isEmpty()) {
+            // 避免并发冲突
             Map<URL, Set<NotifyListener>> failed = new HashMap<URL, Set<NotifyListener>>(failedSubscribed);
             for (Map.Entry<URL, Set<NotifyListener>> entry : new HashMap<URL, Set<NotifyListener>>(failed).entrySet()) {
                 if (entry.getValue() == null || entry.getValue().size() == 0) {
@@ -366,7 +418,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                         Set<NotifyListener> listeners = entry.getValue();
                         for (NotifyListener listener : listeners) {
                             try {
+                                // 订阅
                                 doSubscribe(url, listener);
+                                // 缓存中移除
                                 listeners.remove(listener);
                             } catch (Throwable t) { // Ignore all the exceptions and wait for the next retry
                                 logger.warn("Failed to retry subscribe " + failed + ", waiting for again, cause: " + t.getMessage(), t);
@@ -378,7 +432,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 }
             }
         }
+        // 重试取消订阅
         if (!failedUnsubscribed.isEmpty()) {
+            // 避免并发冲突
             Map<URL, Set<NotifyListener>> failed = new HashMap<URL, Set<NotifyListener>>(failedUnsubscribed);
             for (Map.Entry<URL, Set<NotifyListener>> entry : new HashMap<URL, Set<NotifyListener>>(failed).entrySet()) {
                 if (entry.getValue() == null || entry.getValue().isEmpty()) {
@@ -395,7 +451,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                         Set<NotifyListener> listeners = entry.getValue();
                         for (NotifyListener listener : listeners) {
                             try {
+                                // 取消订阅
                                 doUnsubscribe(url, listener);
+                                // 从缓存中移除
                                 listeners.remove(listener);
                             } catch (Throwable t) { // Ignore all the exceptions and wait for the next retry
                                 logger.warn("Failed to retry unsubscribe " + failed + ", waiting for again, cause: " + t.getMessage(), t);
@@ -407,7 +465,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                 }
             }
         }
+        // 重试通知监听器
         if (!failedNotified.isEmpty()) {
+            // 避免并发冲突
             Map<URL, Map<NotifyListener, List<URL>>> failed = new HashMap<URL, Map<NotifyListener, List<URL>>>(failedNotified);
             for (Map.Entry<URL, Map<NotifyListener, List<URL>>> entry : new HashMap<URL, Map<NotifyListener, List<URL>>>(failed).entrySet()) {
                 if (entry.getValue() == null || entry.getValue().size() == 0) {
@@ -424,7 +484,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
                             try {
                                 NotifyListener listener = entry.getKey();
                                 List<URL> urls = entry.getValue();
+                                // 通知监听器
                                 listener.notify(urls);
+                                // 从缓存中移除
                                 values.remove(listener);
                             } catch (Throwable t) { // Ignore all the exceptions and wait for the next retry
                                 logger.warn("Failed to retry notify " + failed + ", waiting for again, cause: " + t.getMessage(), t);
