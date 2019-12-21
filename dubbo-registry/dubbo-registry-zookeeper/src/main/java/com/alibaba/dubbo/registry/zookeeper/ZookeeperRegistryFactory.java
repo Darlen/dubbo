@@ -29,6 +29,10 @@ public class ZookeeperRegistryFactory extends AbstractRegistryFactory {
 
     private ZookeeperTransporter zookeeperTransporter;
 
+    /**
+     * 根据dubbo spi adaptive ， 默认使用curator
+     * @param zookeeperTransporter
+     */
     public void setZookeeperTransporter(ZookeeperTransporter zookeeperTransporter) {
         this.zookeeperTransporter = zookeeperTransporter;
     }
