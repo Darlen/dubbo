@@ -55,6 +55,9 @@ import java.util.Set;
 
 /**
  * RegistryDirectory
+ * 注册中心服务，维护着所有可用的远程Invoker或者本地的Invoker。 它的Invoker集合是从注册中心获取的，
+ * 它实现了NotifyListener接口实现了回调接口notify方法。比如消费方要调用某远程服务，会向注册中心订阅这个服务的所有服务提供方，
+ * 订阅时和服务提供方数据有变动时回调消费方的NotifyListener服务的notify方法，回调接口传入所有服务的提供方的url地址然后将urls转化为invokers, 也就是refer应用远程服务。
  *
  */
 public class RegistryDirectory<T> extends AbstractDirectory<T> implements NotifyListener {
